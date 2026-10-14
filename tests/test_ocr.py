@@ -18,7 +18,10 @@ from pipeline.ocr import (
 
 HAS_TESSERACT = bool(shutil.which("tesseract") or os.getenv("TESSERACT_CMD")
                      or os.path.exists(WINDOWS_TESSERACT))
-needs_tesseract = pytest.mark.skipif(not HAS_TESSERACT, reason="Tesseract non installé")
+# En CI (REQUIRE_TESSERACT=1), on ne saute jamais : un Tesseract absent doit faire échouer
+REQUIRE_TESSERACT = os.getenv("REQUIRE_TESSERACT") == "1"
+needs_tesseract = pytest.mark.skipif(not HAS_TESSERACT and not REQUIRE_TESSERACT,
+                                     reason="Tesseract non installé")
 
 # Texte tel que Tesseract peut le renvoyer, avec 2 défauts réels observés :
 # un espace parasite dans l'IBAN et "Montant:" collé (+ montant au format français)

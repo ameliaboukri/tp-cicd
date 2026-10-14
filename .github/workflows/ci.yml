@@ -17,10 +17,17 @@ jobs:
       DB_NAME: transactions
       S3_ENDPOINT: http://localhost:8333
       S3_BUCKET: transactions
+      REQUIRE_TESSERACT: "1"   # en CI, les tests OCR ne doivent jamais être sautés
 
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v5
+
+      - name: Installer Tesseract (OCR)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+          tesseract --version
 
       - name: Démarrer le S3 (SeaweedFS) et PostgreSQL
         run: docker compose up -d --wait
@@ -34,10 +41,10 @@ jobs:
       - name: Installer les dépendances
         run: pip install -r requirements.txt
 
-      - name: Lancer les tests (unitaires + intégration + S3)
+      - name: Lancer les tests (unitaires + intégration + S3 + OCR)
         run: python -m pytest -v
 
-      - name: Lancer la pipeline (S3 -> traitement -> base)
+      - name: Lancer la pipeline (CSV + images -> S3 -> traitement -> base)
         run: python -m pipeline.main
 
       - name: Relancer la pipeline (vérifie l'anti-doublons)
@@ -55,7 +62,3 @@ jobs:
       - name: Logs des services en cas d'échec
         if: failure()
         run: docker compose logs --tail 50
-      
-
-      - name: Installer Tesseract (OCR)
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
