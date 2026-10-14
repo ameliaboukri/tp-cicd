@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import psycopg
+from botocore.exceptions import ConnectionError as BotoConnectionError
 from botocore.exceptions import HTTPClientError
 
 from generator.generate_csv import generate
@@ -15,7 +16,9 @@ from pipeline.retry import retry
 
 # Erreurs considérées comme temporaires -> on réessaie
 DB_RETRYABLE = (psycopg.OperationalError, db.TransientDBError)
-S3_RETRYABLE = (HTTPClientError, storage.TransientS3Error)  # réseau, timeout, S3 indisponible
+# Connexion impossible / timeout de connexion (BotoConnectionError),
+# coupure ou timeout de lecture (HTTPClientError), panne simulée
+S3_RETRYABLE = (BotoConnectionError, HTTPClientError, storage.TransientS3Error)
 
 # Les services peuvent mettre quelques secondes à démarrer : on laisse plus de tentatives
 CONNECT_ATTEMPTS = 5

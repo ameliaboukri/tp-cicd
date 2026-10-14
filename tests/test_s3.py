@@ -65,3 +65,11 @@ def test_retry_recuperation_s3_abandon(conn, reference_dir):
             delay=0, simulated_s3_failures=5)
     assert count(conn, "processed_files") == 0
     assert count(conn, "transactions") == 0
+
+
+
+def test_retry_vraie_panne_s3_injoignable(monkeypatch):
+    """S3 réellement injoignable : 5 tentatives de connexion puis abandon."""
+    monkeypatch.setenv("S3_ENDPOINT", "http://127.0.0.1:1")   # aucun service sur ce port
+    with pytest.raises(RetryError, match="connexion au S3 : abandon après 5 tentatives"):
+        run("dossier_inexistant", generate_data=False, nb_files=0, seed=0, delay=0)
