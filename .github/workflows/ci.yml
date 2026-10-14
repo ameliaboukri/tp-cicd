@@ -1,0 +1,52 @@
+name: CI pipeline data
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:   # permet aussi de la lancer à la main depuis GitHub
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    # PostgreSQL lancé dans un conteneur Docker à côté de la CI
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: pipeline
+          POSTGRES_DB: transactions
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pipeline -d transactions"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: pipeline
+      DB_PASSWORD: pipeline
+      DB_NAME: transactions
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v5
+
+      - name: Installer Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Lancer la pipeline (génération + traitement + insertion)
+        run: python -m pipeline.main
+
+      - name: Relancer la pipeline (vérifie l'anti-doublons)
+        run: python -m pipeline.main
