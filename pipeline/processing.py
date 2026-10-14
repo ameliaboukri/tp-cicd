@@ -36,7 +36,7 @@ def flag_transactions(transactions, threshold=FLAG_THRESHOLD):
 
     {**t, ...} crée une copie : la transaction d'origine n'est pas modifiée.
     """
-    return [{**t, "flag": t["montant"] >= threshold} for t in transactions]
+    return [{**t, "flag": t["montant"] > threshold} for t in transactions]
 
 
 def process(transactions):
