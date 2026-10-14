@@ -45,6 +45,9 @@ jobs:
       - name: Installer les dépendances
         run: pip install -r requirements.txt
 
+      - name: Lancer les tests (unitaires + intégration)
+        run: python -m pytest -v
+
       - name: Lancer la pipeline (génération + traitement + insertion)
         run: python -m pipeline.main
 
