@@ -53,3 +53,6 @@ jobs:
 
       - name: Relancer la pipeline (vérifie l'anti-doublons)
         run: python -m pipeline.main
+      
+      - name: Démo retry (2 pannes d'insertion simulées)
+        run: python -m pipeline.main --data-dir data_retry --seed 7 --simulate-db-failures 2

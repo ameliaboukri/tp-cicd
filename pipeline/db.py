@@ -8,6 +8,24 @@ import psycopg
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
 
+class TransientDBError(Exception):
+    """Erreur temporaire de base de données (utilisée pour la simulation)."""
+
+
+class FailureSimulator:
+    """Fait échouer volontairement les N prochaines insertions (pour tester le retry)."""
+
+    def __init__(self, nb_failures=0):
+        self.remaining = nb_failures
+
+    def maybe_fail(self, file_name):
+        if self.remaining > 0:
+            self.remaining -= 1
+            raise TransientDBError(
+                f"panne simulée : connexion perdue pendant l'insertion de {file_name}"
+            )
+
+
 def get_connection():
     """Connexion à la base (paramètres lus dans les variables d'environnement)."""
     return psycopg.connect(
@@ -16,7 +34,8 @@ def get_connection():
         user=os.getenv("DB_USER", "pipeline"),
         password=os.getenv("DB_PASSWORD", "pipeline"),
         dbname=os.getenv("DB_NAME", "transactions"),
-        autocommit=True,  # les transactions sont gérées explicitement
+        autocommit=True,      # les transactions sont gérées explicitement
+        connect_timeout=5,    # ne pas rester bloqué si la base est injoignable
     )
 
 
@@ -47,7 +66,7 @@ def _upsert_totals(cur, table, key_column, totals):
     )
 
 
-def insert_results(conn, file_name, file_hash, results):
+def insert_results(conn, file_name, file_hash, results, simulator=None):
     """Insère les résultats d'un fichier en UNE transaction (tout ou rien)."""
     with conn.transaction():
         with conn.cursor() as cur:
@@ -77,6 +96,10 @@ def insert_results(conn, file_name, file_hash, results):
                     for t in results["transactions"]
                 ],
             )
+
+            # Panne simulée AU MILIEU de l'insertion : le rollback doit tout annuler
+            if simulator is not None:
+                simulator.maybe_fail(file_name)
 
             _upsert_totals(cur, "sent_by_iban", "iban", results["sent_by_iban"])
             _upsert_totals(cur, "sent_by_bank", "banque", results["sent_by_bank"])
