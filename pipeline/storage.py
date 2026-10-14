@@ -6,7 +6,8 @@ import boto3
 from botocore.config import Config
 
 BUCKET = os.getenv("S3_BUCKET", "transactions")
-PREFIX = "incoming/"   # « dossier » où sont déposés les CSV à traiter
+PREFIX = "incoming/"                 # « dossier » où sont déposés les fichiers à traiter
+INPUT_SUFFIXES = (".csv", ".png")    # types de fichiers acceptés par la pipeline
 
 
 class TransientS3Error(Exception):
@@ -64,18 +65,24 @@ def upload_files(client, paths, bucket=BUCKET):
     return keys
 
 
-def list_csv_keys(client, bucket=BUCKET):
-    """Liste (triée) des fichiers CSV présents dans le bucket."""
+def list_keys(client, bucket=BUCKET, suffixes=INPUT_SUFFIXES):
+    """Liste (triée) des fichiers du bucket dont l'extension est dans `suffixes`."""
     keys = []
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=PREFIX):
-        keys += [obj["Key"] for obj in page.get("Contents", []) if obj["Key"].endswith(".csv")]
+        keys += [obj["Key"] for obj in page.get("Contents", [])
+                 if obj["Key"].lower().endswith(suffixes)]
     return sorted(keys)
+
+
+def list_csv_keys(client, bucket=BUCKET):
+    """Liste (triée) des fichiers CSV présents dans le bucket."""
+    return list_keys(client, bucket, suffixes=(".csv",))
 
 
 def verify_uploaded(client, keys, bucket=BUCKET):
     """Vérifie que tous les fichiers envoyés sont bien présents dans le S3."""
-    present = set(list_csv_keys(client, bucket))
+    present = set(list_keys(client, bucket))
     missing = [k for k in keys if k not in present]
     if missing:
         raise RuntimeError(f"Fichiers absents du S3 après l'upload : {missing}")

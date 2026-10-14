@@ -10,7 +10,7 @@ def empty_bucket():
     """Supprime tous les CSV du bucket (pour repartir d'un S3 propre)."""
     s3 = storage.get_client()
     storage.ensure_bucket(s3)
-    for key in storage.list_csv_keys(s3):
+    for key in storage.list_keys(s3):
         s3.delete_object(Bucket=storage.BUCKET, Key=key)
 
 

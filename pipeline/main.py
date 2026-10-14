@@ -1,4 +1,4 @@
-"""Pipeline complète : génération -> S3 -> chargement -> traitement -> base de données."""
+"""Pipeline complète : génération -> S3 -> chargement (CSV ou OCR) -> traitement -> base."""
 import argparse
 import os
 import sys
@@ -9,7 +9,8 @@ from botocore.exceptions import ConnectionError as BotoConnectionError
 from botocore.exceptions import HTTPClientError
 
 from generator.generate_csv import generate
-from pipeline import db, storage
+from generator.generate_images import generate_images
+from pipeline import db, ocr, storage
 from pipeline.loader import parse_csv_text
 from pipeline.processing import process
 from pipeline.retry import retry
@@ -22,6 +23,13 @@ S3_RETRYABLE = (BotoConnectionError, HTTPClientError, storage.TransientS3Error)
 
 # Les services peuvent mettre quelques secondes à démarrer : on laisse plus de tentatives
 CONNECT_ATTEMPTS = 5
+
+
+def load_transactions(key, content):
+    """Chargement : choisit le bon lecteur selon le type de fichier."""
+    if key.lower().endswith(".png"):
+        return ocr.extract_transactions(content, source=key)          # Option 2 : OCR
+    return parse_csv_text(content.decode("utf-8-sig"), source=key)    # CSV
 
 
 def insert_once(file_name, file_hash, results, simulator):
@@ -51,7 +59,7 @@ def process_key(conn, s3, key, max_attempts, delay, db_simulator, s3_simulator):
         print(f"  [SKIP] {key} déjà traité")
         return False
 
-    transactions = parse_csv_text(content.decode("utf-8-sig"), source=key)
+    transactions = load_transactions(key, content)
     results = process(transactions)
 
     inserted = retry(
@@ -66,12 +74,12 @@ def process_key(conn, s3, key, max_attempts, delay, db_simulator, s3_simulator):
         return False
 
     nb_flags = sum(t["flag"] for t in results["transactions"])
-    print(f"  [OK]   {key} : {len(transactions)} transactions, {nb_flags} flag(s)")
+    print(f"  [OK]   {key} : {len(transactions)} transaction(s), {nb_flags} flag(s)")
     return True
 
 
 def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
-        simulated_failures=0, simulated_s3_failures=0):
+        simulated_failures=0, simulated_s3_failures=0, nb_images=2):
     data_dir = Path(data_dir)
 
     print("[1/5] Connexion au S3 et préparation du bucket")
@@ -86,13 +94,17 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
     print(f"  bucket '{storage.BUCKET}' {'créé' if created else 'déjà existant'}")
 
     if generate_data:
-        print("[2/5] Génération des fichiers CSV")
+        print("[2/5] Génération des fichiers CSV et des images")
         generate(data_dir, nb_files, seed)
+        generate_images(data_dir, nb_images, seed)
     else:
         print("[2/5] Génération ignorée (--no-generate)")
 
-    print("[3/5] Envoi des CSV dans le S3 et vérification")
-    local_files = sorted(data_dir.glob("*.csv")) if data_dir.exists() else []
+    print("[3/5] Envoi des fichiers dans le S3 et vérification")
+    local_files = []
+    if data_dir.exists():
+        local_files = sorted(p for p in data_dir.iterdir()
+                             if p.suffix.lower() in storage.INPUT_SUFFIXES)
     keys = storage.upload_files(s3, local_files)
     storage.verify_uploaded(s3, keys)
     print(f"  {len(keys)} fichier(s) envoyé(s) et présent(s) dans le S3")
@@ -108,8 +120,8 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
     try:
         db.init_schema(conn)
 
-        print("[5/5] Récupération depuis le S3, chargement, traitement et insertion "
-              f"(max {max_attempts} tentatives)")
+        print("[5/5] Récupération depuis le S3, chargement (CSV / OCR), traitement "
+              f"et insertion (max {max_attempts} tentatives)")
         db_simulator = db.FailureSimulator(simulated_failures)
         s3_simulator = storage.S3FailureSimulator(simulated_s3_failures)
         if simulated_failures:
@@ -119,7 +131,7 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
             print(f"  /!\\ SIMULATION : les {simulated_s3_failures} prochaine(s) "
                   "récupération(s) S3 vont échouer")
 
-        s3_keys = storage.list_csv_keys(s3)
+        s3_keys = storage.list_keys(s3)
         if not s3_keys:
             print("  Aucun fichier à traiter dans le S3")
             return
@@ -137,8 +149,9 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
 def main():
     parser = argparse.ArgumentParser(description="Pipeline data de transactions")
     parser.add_argument("--data-dir", default="data", help="Dossier local de génération")
-    parser.add_argument("--no-generate", action="store_true", help="Ne pas générer de CSV")
-    parser.add_argument("--files", type=int, default=4, help="Nb de fichiers à générer")
+    parser.add_argument("--no-generate", action="store_true", help="Ne pas générer de données")
+    parser.add_argument("--files", type=int, default=4, help="Nb de CSV aléatoires à générer")
+    parser.add_argument("--images", type=int, default=2, help="Nb d'images aléatoires à générer")
     parser.add_argument("--seed", type=int, default=42, help="Graine aléatoire")
     parser.add_argument("--max-retries", type=int,
                         default=int(os.getenv("MAX_RETRIES", "3")),
@@ -157,7 +170,7 @@ def main():
     try:
         run(args.data_dir, not args.no_generate, args.files, args.seed,
             args.max_retries, args.retry_delay,
-            args.simulate_db_failures, args.simulate_s3_failures)
+            args.simulate_db_failures, args.simulate_s3_failures, args.images)
     except Exception as e:
         print(f"ERREUR pipeline : {e}", file=sys.stderr)
         sys.exit(1)  # code d'erreur -> la CI passera en rouge

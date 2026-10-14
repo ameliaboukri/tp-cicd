@@ -1,3 +1,5 @@
 psycopg[binary]>=3.2.10
 pytest
 boto3
+pytesseract
+pillow
