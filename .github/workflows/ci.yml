@@ -9,32 +9,21 @@ jobs:
   pipeline:
     runs-on: ubuntu-latest
 
-    # PostgreSQL lancé dans un conteneur Docker à côté de la CI
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: pipeline
-          POSTGRES_PASSWORD: pipeline
-          POSTGRES_DB: transactions
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U pipeline -d transactions"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 15
-
     env:
       DB_HOST: localhost
       DB_PORT: 5432
       DB_USER: pipeline
       DB_PASSWORD: pipeline
       DB_NAME: transactions
+      S3_ENDPOINT: http://localhost:8333
+      S3_BUCKET: transactions
 
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v5
+
+      - name: Démarrer le S3 (SeaweedFS) et PostgreSQL
+        run: docker compose up -d --wait
 
       - name: Installer Python
         uses: actions/setup-python@v6
@@ -45,14 +34,24 @@ jobs:
       - name: Installer les dépendances
         run: pip install -r requirements.txt
 
-      - name: Lancer les tests (unitaires + intégration)
+      - name: Lancer les tests (unitaires + intégration + S3)
         run: python -m pytest -v
 
-      - name: Lancer la pipeline (génération + traitement + insertion)
+      - name: Lancer la pipeline (S3 -> traitement -> base)
         run: python -m pipeline.main
 
       - name: Relancer la pipeline (vérifie l'anti-doublons)
         run: python -m pipeline.main
-      
-      - name: Démo retry (2 pannes d'insertion simulées)
-        run: python -m pipeline.main --data-dir data_retry --seed 7 --simulate-db-failures 2
+
+      - name: Vérifier les fichiers présents dans le S3
+        run: curl -s "http://localhost:8333/transactions/?prefix=incoming/"
+
+      - name: Démo retry insertion (2 pannes base simulées)
+        run: python -m pipeline.main --data-dir data_retry_db --seed 7 --simulate-db-failures 2
+
+      - name: Démo retry S3 (2 pannes de récupération simulées)
+        run: python -m pipeline.main --data-dir data_retry_s3 --seed 8 --simulate-s3-failures 2
+
+      - name: Logs des services en cas d'échec
+        if: failure()
+        run: docker compose logs --tail 50
