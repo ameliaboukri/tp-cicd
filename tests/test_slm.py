@@ -11,7 +11,7 @@ from pipeline import slm
 from pipeline.main import run
 from pipeline.slm import SLMExtractionError, to_row
 
-TEXTE_SUJET = REFERENCE_TEXTS[0]   # l'exemple exact du sujet
+TEXTE_SUJET = REFERENCE_TEXTS[0]   
 
 # Réponse JSON réellement renvoyée par qwen2.5:1.5b pour l'exemple du sujet
 REPONSE_SUJET = {
@@ -92,12 +92,12 @@ def test_textes_dans_la_pipeline(conn, tmp_path):
     """Texte -> S3 -> SLM -> traitement -> base, avec les bons flags, sans doublon."""
     generate_texts(tmp_path)
     run(tmp_path, generate_data=False, nb_files=0, seed=0, delay=0)
-    run(tmp_path, generate_data=False, nb_files=0, seed=0, delay=0)   # 2e passage ignoré
+    run(tmp_path, generate_data=False, nb_files=0, seed=0, delay=0)   
 
     rows = conn.execute("SELECT montant, flag FROM transactions ORDER BY montant").fetchall()
     assert rows == [
         (Decimal("1250.50"), False),
-        (Decimal("5000.00"), False),   # pile 5000 -> pas de flag
+        (Decimal("5000.00"), False),   
         (Decimal("6200.00"), True),
     ]
     assert count(conn, "processed_files") == 3

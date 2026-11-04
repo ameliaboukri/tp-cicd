@@ -55,16 +55,16 @@ def test_sum_received_by_iban():
 
 def test_flag_strictement_superieur_a_5000():
     flags = [t["flag"] for t in flag_transactions(SAMPLE)]
-    assert flags == [False, False, True, False]  # 5000.00 pile -> pas de flag
+    assert flags == [False, False, True, False]  
 
 
 def test_fonctions_pures():
     original = copy.deepcopy(SAMPLE)
     r1 = process(SAMPLE)
     r2 = process(SAMPLE)
-    assert SAMPLE == original          # l'entrée n'est pas modifiée
-    assert "flag" not in SAMPLE[0]     # le flag est sur une copie
-    assert r1 == r2                    # même entrée -> même résultat
+    assert SAMPLE == original          
+    assert "flag" not in SAMPLE[0]     
+    assert r1 == r2                    
 
 
 def test_loader_montant_invalide():

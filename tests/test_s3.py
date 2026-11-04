@@ -35,7 +35,7 @@ def test_traitement_ne_depend_pas_du_local(conn, reference_dir, tmp_path_factory
     """Les fichiers sont lus depuis le S3, même si le dossier local est vide."""
     s3 = storage.get_client()
     storage.upload_files(s3, sorted(reference_dir.glob("*.csv")))
-    shutil.rmtree(reference_dir)                      # plus aucun fichier local
+    shutil.rmtree(reference_dir)                      
     empty_dir = tmp_path_factory.mktemp("vide")
     run(empty_dir, generate_data=False, nb_files=0, seed=0, delay=0)
     assert count(conn, "transactions") == 6
@@ -70,6 +70,6 @@ def test_retry_recuperation_s3_abandon(conn, reference_dir):
 
 def test_retry_vraie_panne_s3_injoignable(monkeypatch):
     """S3 réellement injoignable : 5 tentatives de connexion puis abandon."""
-    monkeypatch.setenv("S3_ENDPOINT", "http://127.0.0.1:1")   # aucun service sur ce port
+    monkeypatch.setenv("S3_ENDPOINT", "http://127.0.0.1:1")   
     with pytest.raises(RetryError, match="connexion au S3 : abandon après 5 tentatives"):
         run("dossier_inexistant", generate_data=False, nb_files=0, seed=0, delay=0)
