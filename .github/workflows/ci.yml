@@ -17,7 +17,9 @@ jobs:
       DB_NAME: transactions
       S3_ENDPOINT: http://localhost:8333
       S3_BUCKET: transactions
+      OLLAMA_URL: http://localhost:11434
       REQUIRE_TESSERACT: "1"   # en CI, les tests OCR ne doivent jamais être sautés
+      REQUIRE_SLM: "1"         # en CI, les tests SLM ne doivent jamais être sautés
 
     steps:
       - name: Récupérer le code
@@ -29,8 +31,17 @@ jobs:
           sudo apt-get install -y tesseract-ocr
           tesseract --version
 
-      - name: Démarrer le S3 (SeaweedFS) et PostgreSQL
+      - name: Cache du modèle SLM (évite de re-télécharger 1 Go)
+        uses: actions/cache@v4
+        with:
+          path: .ollama
+          key: ollama-qwen2.5-1.5b
+
+      - name: Démarrer le S3, PostgreSQL et Ollama
         run: docker compose up -d --wait
+
+      - name: Télécharger le modèle SLM
+        run: docker exec tp_ollama ollama pull qwen2.5:1.5b
 
       - name: Installer Python
         uses: actions/setup-python@v6
@@ -41,10 +52,10 @@ jobs:
       - name: Installer les dépendances
         run: pip install -r requirements.txt
 
-      - name: Lancer les tests (unitaires + intégration + S3 + OCR)
+      - name: Lancer les tests (unitaires + intégration + S3 + OCR + SLM)
         run: python -m pytest -v
 
-      - name: Lancer la pipeline (CSV + images -> S3 -> traitement -> base)
+      - name: Lancer la pipeline (CSV + images + textes -> S3 -> traitement -> base)
         run: python -m pipeline.main
 
       - name: Relancer la pipeline (vérifie l'anti-doublons)

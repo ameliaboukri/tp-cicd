@@ -7,7 +7,7 @@ from botocore.config import Config
 
 BUCKET = os.getenv("S3_BUCKET", "transactions")
 PREFIX = "incoming/"                 # « dossier » où sont déposés les fichiers à traiter
-INPUT_SUFFIXES = (".csv", ".png")    # types de fichiers acceptés par la pipeline
+INPUT_SUFFIXES = (".csv", ".png", ".txt")   # CSV, images (OCR), textes (SLM)
 
 
 class TransientS3Error(Exception):

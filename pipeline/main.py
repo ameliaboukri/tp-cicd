@@ -1,4 +1,4 @@
-"""Pipeline complète : génération -> S3 -> chargement (CSV ou OCR) -> traitement -> base."""
+"""Pipeline complète : génération -> S3 -> chargement (CSV, OCR ou SLM) -> traitement -> base."""
 import argparse
 import os
 import sys
@@ -10,7 +10,8 @@ from botocore.exceptions import HTTPClientError
 
 from generator.generate_csv import generate
 from generator.generate_images import generate_images
-from pipeline import db, ocr, storage
+from generator.generate_texts import generate_texts
+from pipeline import db, ocr, slm, storage
 from pipeline.loader import parse_csv_text
 from pipeline.processing import process
 from pipeline.retry import retry
@@ -29,6 +30,8 @@ def load_transactions(key, content):
     """Chargement : choisit le bon lecteur selon le type de fichier."""
     if key.lower().endswith(".png"):
         return ocr.extract_transactions(content, source=key)          # Option 2 : OCR
+    if key.lower().endswith(".txt"):
+        return slm.extract_transactions(content, source=key)          # Option 3 : SLM
     return parse_csv_text(content.decode("utf-8-sig"), source=key)    # CSV
 
 
@@ -59,7 +62,13 @@ def process_key(conn, s3, key, max_attempts, delay, db_simulator, s3_simulator):
         print(f"  [SKIP] {key} déjà traité")
         return False
 
-    transactions = load_transactions(key, content)
+    transactions = retry(
+        lambda: load_transactions(key, content),
+        max_attempts=max_attempts,
+        delay=delay,
+        retry_on=(slm.SLMUnavailableError,),   # Ollama temporairement injoignable
+        label=f"extraction de {key}",
+    )
     results = process(transactions)
 
     inserted = retry(
@@ -94,9 +103,10 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
     print(f"  bucket '{storage.BUCKET}' {'créé' if created else 'déjà existant'}")
 
     if generate_data:
-        print("[2/5] Génération des fichiers CSV et des images")
+        print("[2/5] Génération des fichiers CSV, des images et des textes")
         generate(data_dir, nb_files, seed)
         generate_images(data_dir, nb_images, seed)
+        generate_texts(data_dir)
     else:
         print("[2/5] Génération ignorée (--no-generate)")
 
@@ -120,7 +130,7 @@ def run(data_dir, generate_data, nb_files, seed, max_attempts=3, delay=1.0,
     try:
         db.init_schema(conn)
 
-        print("[5/5] Récupération depuis le S3, chargement (CSV / OCR), traitement "
+        print("[5/5] Récupération depuis le S3, chargement (CSV / OCR / SLM), traitement "
               f"et insertion (max {max_attempts} tentatives)")
         db_simulator = db.FailureSimulator(simulated_failures)
         s3_simulator = storage.S3FailureSimulator(simulated_s3_failures)
