@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/ameliaboukri/tp-cicd/actions/workflows/ci.yml/badge.svg)
 
-**Auteure :** Amelia Boukri — **Dépôt :** https://github.com/ameliaboukri/tp-cicd
+**Auteure :** Amelia Boukri , MELISSA BELKESSAM — **Dépôt :** https://github.com/ameliaboukri/tp-cicd
 
 Pipeline data automatisée qui génère des transactions financières (CSV, images, textes), les stocke dans un S3 local, les charge, les valide, les traite et les insère dans PostgreSQL. Toute la chaîne est testée et exécutée automatiquement par une CI GitHub Actions à chaque push.
 
